@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TSMC 288 單字機</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout concept: dark fab-band header holding a 288-die wafer map (one die per word, lit when learned);
+   content below as equipment-panel cards; mode switcher as a bottom tab bar. */
+:root{
+  --bg:#eef1ef; --surface:#fbfcfb; --surface-2:#e3e9e6; --ink:#12201f; --muted:#52645f; --line:#cdd7d3;
+  --accent:#f2b705; --accent-ink:#2b2000; --accent-soft:#fff1c2; --accent-text:#7a5600;
+  --band:#0e2a30; --band-ink:#e8f1ee; --band-muted:#9db8b3; --wafer:#0b2329; --wafer-edge:#2f5f69; --dot-off:#27484f;
+  --ok:#1c7c54; --bad:#b83a2a; --focus:#0b6e8a;
+  --f-display:'Barlow Semi Condensed','Noto Sans TC',system-ui,sans-serif;
+  --f-body:'Noto Sans TC',system-ui,-apple-system,'PingFang TC','Microsoft JhengHei',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1417; --surface:#111e22; --surface-2:#192b30; --ink:#e7f0ed; --muted:#93a9a4; --line:#24383d;
+    --accent:#ffc83a; --accent-ink:#241a00; --accent-soft:#2b2410; --accent-text:#ffd366;
+    --band:#071a1e; --wafer:#081a1f; --wafer-edge:#2a525b; --dot-off:#21414a;
+    --ok:#4cc38a; --bad:#ff8a78; --focus:#5cc4e0; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1417; --surface:#111e22; --surface-2:#192b30; --ink:#e7f0ed; --muted:#93a9a4; --line:#24383d;
+  --accent:#ffc83a; --accent-ink:#241a00; --accent-soft:#2b2410; --accent-text:#ffd366;
+  --band:#071a1e; --wafer:#081a1f; --wafer-edge:#2a525b; --dot-off:#21414a;
+  --ok:#4cc38a; --bad:#ff8a78; --focus:#5cc4e0; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%}
+button,select,input{font:inherit;color:inherit}
+p{margin:0}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* header band */
+.band{background:var(--band);color:var(--band-ink)}
+.inner{max-width:920px;margin:0 auto;padding-block:20px 18px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.wafer{width:136px;height:136px;flex:none}
+.wafer .base{fill:var(--wafer);stroke:var(--wafer-edge);stroke-width:2}
+.wafer .notch{fill:var(--band)}
+.wafer .d{fill:var(--dot-off);cursor:pointer}
+.wafer .d.on{fill:var(--accent)}
+.brand-txt{flex:1 1 230px;min-width:0}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--band-muted);margin-bottom:4px}
+h1{font-family:var(--f-display);font-weight:700;font-size:2.1rem;line-height:1.1;margin:0 0 6px;letter-spacing:.01em}
+.tagline{color:var(--band-muted);font-size:13px;margin-bottom:12px}
+.meter{display:flex;align-items:center;gap:10px}
+.bar{flex:1;height:8px;border-radius:4px;background:var(--dot-off);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.count{font-family:var(--f-mono);font-size:13px;white-space:nowrap}
+
+/* page */
+.app{max-width:920px;margin:0 auto;padding-block:16px 120px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.chips{position:relative;display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:thin}
+.chip{flex:none;display:flex;align-items:baseline;gap:6px;min-height:40px;padding:7px 13px;border:1px solid var(--line);background:var(--surface);border-radius:999px;font-size:13.5px;cursor:pointer;white-space:nowrap}
+.chip small{font-family:var(--f-mono);font-size:11px;opacity:.7}
+.chip[aria-pressed="true"]{background:var(--band);border-color:var(--band);color:var(--band-ink)}
+.ghead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:4px 0 10px}
+.ghead h2{margin:0;font-size:1.4rem;font-weight:700}
+.gen{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;color:var(--muted)}
+.gsub{color:var(--muted);font-size:13.5px;flex-basis:100%}
+.story{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 15px;margin-bottom:12px;line-height:2}
+.story mark{background:var(--accent-soft);color:var(--ink);border-bottom:2px solid var(--accent);border-radius:2px;padding:0 3px;font-family:var(--f-display);font-weight:600;font-size:1.06em}
+.tools{display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:14px;font-size:13.5px}
+.tools label,.ctl label{display:flex;align-items:center;gap:7px;min-height:34px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.card{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
+.card.known{border-color:var(--accent);background:var(--accent-soft)}
+.card.pulse{outline:3px solid var(--focus);outline-offset:2px}
+.ic{width:56px;height:56px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;font-size:30px;line-height:1}
+.card .body{min-width:0;display:flex;flex-direction:column;gap:3px}
+.line1{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.w{font-family:var(--f-display);font-weight:700;font-size:1.42rem;line-height:1.15;overflow-wrap:anywhere}
+.pos{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.trap{font-size:11px;color:var(--accent-text);border:1px solid var(--accent);border-radius:4px;padding:0 5px;line-height:1.6}
+.zh{font-weight:700;font-size:1.05rem}
+.hook{color:var(--muted);font-size:13.5px;line-height:1.55}
+.acts{display:flex;gap:8px;margin-top:6px}
+.mini{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:4px 11px;border:1px solid var(--line);background:var(--surface);border-radius:8px;cursor:pointer;font-size:13px}
+.card.known .mini{background:transparent}
+.mini[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.grid.mask .reveal{filter:blur(7px);cursor:pointer;user-select:none}
+.grid.mask .card.shown .reveal{filter:none}
+.empty{padding:28px 8px;color:var(--muted);text-align:center}
+.reset{margin-top:26px;text-align:center}
+.reset button{background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;min-height:40px;font-size:13px}
+
+/* buttons */
+.btn{min-height:46px;padding:8px 16px;border:1px solid var(--line);background:var(--surface);border-radius:10px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn:disabled{opacity:.55;cursor:default}
+.ctl{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;margin-bottom:12px}
+.sel{display:flex;align-items:center;gap:8px}
+select{min-height:40px;padding:6px 10px;border:1px solid var(--line);background:var(--surface);border-radius:8px;max-width:100%}
+
+/* flashcards */
+.flipwrap{perspective:1200px}
+.flip{position:relative;height:340px;cursor:pointer;outline-offset:3px}
+.flip-inner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .5s}
+.flip.on .flip-inner{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center;border:1px solid var(--line);border-radius:14px;background:var(--surface);backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:auto}
+.face.back{transform:rotateY(180deg);background:var(--accent-soft);border-color:var(--accent)}
+.bigic{font-size:76px;line-height:1.05}
+.bigw{font-family:var(--f-display);font-weight:700;font-size:2.4rem;line-height:1.1;overflow-wrap:anywhere}
+.bigzh{font-weight:700;font-size:2rem;line-height:1.25}
+.hint{font-size:12px;color:var(--muted);font-family:var(--f-mono);letter-spacing:.06em}
+.fcount{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin:0 0 8px;text-align:center}
+.fbtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px}
+.fbtns .btn{padding-inline:8px}
+.sp{width:18px;height:18px}
+
+/* quiz */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.modes{display:grid;gap:8px;margin:12px 0 16px}
+.modes label{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:var(--bg)}
+.modes small{display:block;color:var(--muted)}
+.qprompt{text-align:center;padding:8px 0 16px}
+.opts{display:grid;gap:8px}
+.opt{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;min-height:52px;padding:10px 14px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;cursor:pointer;font-size:1.02rem}
+.opt.correct{border-color:var(--ok);background:var(--surface);box-shadow:inset 0 0 0 1px var(--ok)}
+.opt.wrong{border-color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
+.opt .mk{font-family:var(--f-mono);font-size:13px;font-weight:700}
+.opt.correct .mk{color:var(--ok)}
+.opt.wrong .mk{color:var(--bad)}
+.fb{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--surface-2)}
+.fb b{font-family:var(--f-display);font-size:1.15rem}
+.score{font-family:var(--f-display);font-weight:700;font-size:3.2rem;line-height:1;text-align:center;margin:6px 0 4px}
+.wl{display:grid;gap:8px;margin:14px 0}
+.wl div{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.row .btn{flex:1 1 150px}
+
+/* bottom tab bar */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;justify-content:center;background:var(--surface);border-top:1px solid var(--line);padding-top:6px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.nav .in{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:100%;max-width:560px}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:1px;min-height:52px;padding:6px;border:0;background:none;border-radius:10px;color:var(--muted);cursor:pointer;font-size:12.5px}
+.nav button[aria-current="page"]{color:var(--accent-ink);background:var(--accent);font-weight:700}
+.nav svg{width:22px;height:22px}
+
+@media (max-width:420px){
+  .wafer{width:112px;height:112px}
+  h1{font-size:1.8rem}
+  .bigic{font-size:64px}
+  .bigw{font-size:2rem}
+}
+@media (prefers-reduced-motion:reduce){
+  .flip-inner,.bar i{transition:none}
+}
+</style>
+</head>
+<body>
+
+
+<header class="band">
+  <div class="inner">
+    <div class="brand">
+      <svg class="wafer" id="wafer" viewBox="0 0 210 210" role="img" aria-label="288 顆晶粒，亮起來的是已學會的單字"></svg>
+      <div class="brand-txt">
+        <p class="eyebrow">台積電作業員英文</p>
+        <h1>288 單字機</h1>
+        <p class="tagline" id="tag">點亮每一顆晶粒，整片晶圓全亮就通關。</p>
+        <div class="meter"><div class="bar"><i id="bar"></i></div><span class="count"><b id="kc">0</b> / 288</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="app"><div id="view"></div></main>
+
+<nav class="nav" aria-label="學習模式">
+  <div class="in">
+    <button type="button" data-tab="learn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>學習</button>
+    <button type="button" data-tab="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>閃卡</button>
+    <button type="button" data-tab="quiz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>測驗</button>
+  </div>
+</nav>
+
+<script>
+const GROUPS = [
+{id:"g1",name:"警報室",en:"ALARM ROOM",sub:"機台出事時，螢幕上會跳出來的字",
+story:"半夜機台突然 **alarm** 狂叫！螢幕跳出 **error**，畫面 **freeze**。你趕快按下 **emergency stop**，檢查後發現晶圓被 **scratch** 刮傷，還有 **particle** 掉進去造成 **contamination**，只好 **scrap** 報廢。組長交代：先 **purge** 清管路，再 **lock** 鎖住機台，下次別再 **miss-operation**，也別 **abort** 到一半就跑。",
+w:[
+[2,"abnormal","a.","異常的","📉","ab- 是「離開」，離開 normal（正常）＝異常",""],
+[3,"abort","v.","中止","🛑","諧音「餓爆」：餓爆了，不做了，中止",""],
+[12,"alarm","n.","警報","🚨","鬧鐘叫 alarm clock，一直響就是警報",""],
+[13,"alert","n.","警報","📣","alarm 的弟弟：先提醒你「注意！」",""],
+[30,"broken","a.","破掉的","💔","break 的過去分詞，心碎了就是 broken","e"],
+[55,"contamination","n.","污染","🦠","晶圓被髒東西「碰到」＝污染",""],
+[67,"defect","n.","缺陷","🕳️","de（掉下去）+ fect（做）：做壞了，產品有缺陷",""],
+[73,"emergency","n.","緊急情況","🚑","e-merge：突然冒出來（emerge）的事，就是緊急",""],
+[74,"emergency stop","n.","緊急停止","🔴","機台上那顆大紅色蘑菇按鈕",""],
+[80,"error","n.","錯誤","❌","諧音「唉囉」：唉，錯了囉",""],
+[86,"fault","n.","錯誤","🙇","It's my fault! 都是我的錯",""],
+[91,"freeze","v.","凍結","🧊","freezer 是冷凍庫，畫面凍住動不了",""],
+[112,"inhibition","n.","禁止禁用","🚫","和 prohibit（禁止）同家族，都是「不准」",""],
+[155,"miss-operation","n.","錯誤動作","🙈","miss（失誤）+ operation（操作）",""],
+[177,"particle","n.","微粒","✨","part（一小部分）+ icle（更小）：潔淨室頭號敵人",""],
+[203,"purge","v.","清除","🧹","諧音「怕雞」：怕雞亂，把雞舍清乾淨",""],
+[228,"scrap","n.","報廢","🪦","scrap metal 是廢鐵；壞掉的晶圓只好報廢",""],
+[229,"scratch","v.","刮傷","🐱","貓咪抓（scratch）出痕跡，晶圓被刮傷",""],
+[283,"warning","n.","警告","⚠️","warn（警告）+ ing；黃色三角形標誌",""],
+[52,"concern","v.","擔憂","😟","I'm concerned about... 我很擔心…",""],
+[139,"lock","v.","鎖住","🔒","鎖頭圖案；機台出事會被 lock 起來","e"]
+]},
+{id:"g2",name:"操作面板",en:"CONTROL PANEL",sub:"機台螢幕上的按鈕與指令",
+story:"開機後按 **start**，機台進入 **standby** 等你。先 **select** 選好配方，再 **confirm** 確認，按 **press** 讓它 **execute** 執行。想中途 **hold** 暫停或 **cancel** 取消都可以。做完 **complete**，記得 **save** 儲存，最後 **release** 把貨放行。",
+w:[
+[247,"start","n.","啟動","▶️","綠色播放鍵就是 start","e"],
+[246,"standby","n.","等待","⏸️","stand（站）+ by（旁邊）：站在旁邊待命",""],
+[56,"continue","v.","繼續","⏭️","播放鍵再按一次，繼續做下去",""],
+[31,"cancel","v.","取消","✖️","手機上常見的 Cancel 鍵，取消",""],
+[54,"confirm","v.","確認","✅","con（完全）+ firm（堅固）：穩穩定下來＝確認",""],
+[231,"select","v.","選擇","👆","se（分開）+ lect（挑）：把它挑出來",""],
+[42,"choose","v.","挑選","🙋","兩個 o 像兩隻眼睛在挑；過去式 chose","e"],
+[84,"execute","v.","執行","🎬","導演喊 Action！開始執行；executive 是主管",""],
+[238,"skip","v.","跳過","⏩","跳繩就是 skipping rope","e"],
+[218,"reset","v.","重設","🔄","re（再）+ set（設定）","e"],
+[45,"clear","v.","清除","🧼","clear 清楚＝把畫面清乾淨","e"],
+[69,"delete","v.","刪除","⌫","鍵盤上的 Delete 鍵","e"],
+[227,"save","v.","儲存","💾","磁碟片圖案就是存檔","e"],
+[236,"show","v.","顯示","📺","show 秀出來，電視節目也叫 show","e"],
+[280,"view","v.","查看","👀","preview 預先看、review 重新看","e"],
+[58,"copy","n.","拷貝","📑","影印機 copy machine","e"],
+[198,"print","n.","列印","🖨️","印表機圖案","e"],
+[196,"preview","n.","預覽","🔍","pre（先）+ view（看）：先看一眼",""],
+[194,"press","v.","按下","👇","按下去；pressure（壓力）是同家族","e"],
+[204,"push","v.","推進","➡️","門上的 PUSH 是推，PULL 是拉","e"],
+[105,"hold","v.","暫停","✋","hold on 等一下！機台被 hold ＝暫停","t"],
+[282,"waiting","n.","等待","⏳","wait + ing，沙漏","e"],
+[50,"complete","v.","完成","🏁","com（全部）+ plete（填滿）：全部填滿＝完成",""],
+[8,"add","v.","增加","🆙","1 + 1 = 2，add 加","e"],
+[37,"change","v.","更換","🔁","找零錢也叫 change","e"],
+[104,"help","v.","幫助","🆘","SOS！Help!","e"],
+[212,"release","v.","釋放","🔓","re + lease：把鎖放開；放行批貨",""],
+[24,"bank","n./v.","銀行／暫存","🏦","銀行把錢存起來，機台把資料暫存","t"]
+]},
+{id:"g3",name:"動手做事",en:"HANDS ON",sub:"作業員一天到晚在做的動作",
+story:"上班第一天：先 **prepare** 備好工具，**check** 機台狀況，**adjust** 調整、**align** 對準。照手冊 **follow** 步驟，小心 **handle** 晶圓。用儀器 **measure** 量測，有小故障就 **repair**，平常要 **maintain** 保養。出問題記得 **inform** 通知組長。",
+w:[
+[9,"adjust","v.","調整","🎚️","ad（朝向）+ just（剛好）：調到剛剛好",""],
+[14,"align","v.","對焦","🧭","a + line：排成一直線＝對準",""],
+[17,"attach","v.","附上","📎","email 的附件叫 attachment",""],
+[39,"check","v.","檢查","☑️","打勾勾 ✓ ＝檢查過了","e"],
+[114,"inspect","v.","檢查","🧐","in（往裡面）+ spect（看）：仔細往裡看",""],
+[46,"collect","v.","蒐集","🧺","col（一起）+ lect（挑）：挑起來湊一堆",""],
+[87,"find","v.","發現","🔦","拿手電筒找到了！","e"],
+[90,"follow","v.","照做、跟隨","👣","follow 腳印走＝照著 SOP 做","e"],
+[100,"handle","v.","處理","🤲","hand（手）+ le：用手處理；門把也叫 handle","e"],
+[121,"keep","v.","保持","🧘","keep calm 保持冷靜","e"],
+[128,"lift","v.","抬起、舉起","🏋️","英國人把電梯叫 lift","e"],
+[144,"maintain","v.","維護","🛠️","main（手）+ tain（握）：握在手裡保養；maintenance 保養",""],
+[152,"merge","v.","合併","🔀","高速公路的 merge 是匯入車道",""],
+[193,"prepare","v.","準備","🍳","pre（先）+ pare（備好）：先備好料",""],
+[211,"recover","v.","復機","🩹","re（回）+ cover：恢復原狀＝復機","t"],
+[215,"remove","v.","移開","📤","re + move：把它移走","e"],
+[216,"repair","v.","修理","🔧","扳手就是 repair","e"],
+[271,"track","v.","追蹤","🛰️","track 是軌跡；批貨走到哪都追得到",""],
+[274,"tune","v.","調整","🎸","吉他調音 tune，微調",""],
+[277,"use","v.","使用","🖱️","use 使用","e"],
+[43,"clean","v.","清潔","🧽","clean 乾淨","e"],
+[150,"measure","v.","量測","🧪","measure 量；measurement 量測結果",""],
+[57,"control","n.","控制","🎮","遊戲搖桿 controller","e"],
+[159,"move","v./n.","移動／產出","🚚","在廠裡，批貨被 move 到下一站，就算「產出」","t"],
+[126,"learn","v.","學習","📚","learn 學","e"],
+[192,"practice","v.","練習","🏀","Practice makes perfect.","e"],
+[214,"remind","v.","提醒","⏰","re + mind：再叫一次你的腦袋",""],
+[110,"inform","v.","通知","📢","information 資訊的動詞",""]
+]},
+{id:"g4",name:"成對相反",en:"OPPOSITES",sub:"一次背兩個：進／出、開／關、乾／濕",
+story:"機台世界什麼都成雙成對：**load** 上貨、**unload** 下貨；**enter** 進、**exit** 出；**on-line** 在線、**off-line** 離線；**automatic** 自動、**manual** 手動；**normal** 正常；**dry** 乾、**wet** 濕；**top** 頂、**bottom** 底；**input** 輸入、**output** 輸出。背一個，另一個免費送。",
+w:[
+[135,"load","v.","上貨、裝載","📥","load 裝進來，un-load 拿出去",""],
+[276,"unload","v.","下貨、卸載","📤","un（相反）+ load",""],
+[77,"enter","v.","進入","🚪","鍵盤 Enter 鍵＝進去","e"],
+[85,"exit","n.","退出","🏃","綠色逃生人形標誌 EXIT","e"],
+[168,"on-line","a.","在線的","🟢","綠燈亮著＝在線上",""],
+[166,"off-line","a.","離線的","⚫","燈滅了＝離線",""],
+[19,"automatic","a.","自動的","🤖","auto（自己）+ matic：自己會動；automobile 是會自己動的車",""],
+[145,"manual","a.","手動的","🖐️","manu（手）：用手做；說明書也叫 manual",""],
+[161,"normal","a.","正常的","🙂","ab-normal 去掉 ab- 就是它","e"],
+[72,"dry","a.","乾的","🏜️","沙漠超乾","e"],
+[285,"wet","a.","濕的","💦","wet 濕，下雨天","e"],
+[29,"bottom","n.","底部","⬇️","bottom 底，top 頂","e"],
+[270,"top","n.","頂端","⬆️","top 是山頂","e"],
+[113,"input","n.","輸入","⤵️","put in：放進去","e"],
+[170,"output","n.","輸出","⤴️","put out：放出來","e"],
+[141,"lose","v.","遺失","🤷","lose 弄丟；loose 才是鬆的",""],
+[160,"new","a.","新的","🆕","new","e"],
+[102,"heavy","a.","重的","🐘","大象很重","e"],
+[92,"full","a.","滿的","🈵","full 滿；全職叫 full-time","e"],
+[107,"hot","a.","熱的","🔥","hot","e"],
+[178,"pass","v.","合格","🎫","通行證 pass：過關＝合格",""],
+[252,"success","n.","成功","🏆","succeed 成功；failure 失敗",""],
+[185,"plus","prep.","加上","➕","plus 加號","e"],
+[158,"more","a.","更多的","🍪","more cookies! 再來一塊","e"],
+[288,"zero","n.","零","0️⃣","零","e"],
+[189,"positive","a.","正向的","👍","positive 正向；negative 負向","e"],
+[226,"same","a.","相同的","🟰","same 一模一樣","e"]
+]},
+{id:"g5",name:"時間與頻率",en:"SCHEDULE",sub:"每天、每週、準時、加班",
+story:"設備 **daily** 每天點檢，**weekly** 每週保養，**monthly** 每月校正，**annually** 每年大檢查。上班要 **on time** 準時，遇到 **delay** 延誤或 **postpone** 延期，可能就要 **over time** 加班。真的撐不住就 **take leave** 請假，但 **absence** 缺席要先報備。",
+w:[
+[15,"annually","a.","每年的","📅","annual 年度；anniversary（週年）同字根",""],
+[63,"daily","a.","每日的","☀️","每天日出：daily","e"],
+[284,"weekly","adv.","每週地","🗓️","week + ly","e"],
+[157,"monthly","a.","每月的","🌙","month + ly","e"],
+[65,"date","n.","日期","📆","date 日期；也是約會","e"],
+[268,"time","n.","時間","🕒","time","e"],
+[167,"on time","ph.","準時","⏱️","on（在）time（時間點上）：剛剛好","e"],
+[172,"over time","ph.","加班","🌃","over（超過）+ time：超過下班時間",""],
+[68,"delay","v.","延遲","🐌","蝸牛慢吞吞＝delay",""],
+[190,"postpone","v.","延期","↪️","post（後）+ pone（放）：放到後面",""],
+[61,"cycle","n.","週期","🚲","cycle 是腳踏車，輪子一圈一圈＝週期",""],
+[62,"cycle time","n.","生產週期","⏲️","輪子轉一圈要多久",""],
+[275,"turn rate","n.","週轉率","🌀","turn（轉）+ rate（率）",""],
+[235,"shift","n.","班次","🌗","shift 換檔、換班；日班夜班",""],
+[260,"take leave","ph.","請假","🏖️","take（拿）+ leave（離開）：拿一段離開的時間",""],
+[4,"absence","n.","缺席","🪑","ab（離開）+ sence（在）：不在座位上；相反是 presence",""]
+]},
+{id:"g6",name:"晶圓廠心臟",en:"FAB CORE",sub:"晶圓、設備、製程與材料",
+story:"**wafer** 是威化餅，切開變成 **chip**。晶圓裝在 **cassette** 裡，放進 **pod**，由 **shuttle** 接駁、**stocker** 存放，再由 **sorter** 分類。製程四大區：**lithography** 黃光、**etching** 蝕刻、**diffusion** 擴散、**thin film** 薄膜。會用到 **acid**、**gas**、**liquid**、**metal**。進 **clean chamber** 前要先過 **air shower**。",
+w:[
+[281,"wafer","n.","晶圓","🍪","wafer 就是威化餅：又薄又圓",""],
+[41,"chip","n.","晶片","🍟","洋芋片也叫 chip：薄薄一片","e"],
+[232,"semiconductor","n.","半導體","⚡","semi（一半）+ conductor（導體）",""],
+[148,"mask","n.","光罩、口罩","😷","mask 口罩；光罩是 chip 的面具","t"],
+[34,"cassette","n.","晶片專用盒","📼","卡式錄音帶，裝東西的盒子",""],
+[186,"pod","n.","晶片傳送盒","📦","豌豆莢 pea pod：一個莢裡裝一排豆",""],
+[251,"stocker","n.","儲存櫃","🗄️","stock（庫存）+ er：存貨的櫃子",""],
+[239,"sorter","n.","排序機、分類機","🗂️","sort（分類）+ er：分類的機器",""],
+[237,"shuttle","n.","接駁車","🚌","太空梭 space shuttle 來回接送",""],
+[171,"oven","n.","烤箱","♨️","烤麵包的 oven","e"],
+[143,"machine","n.","機器","⚙️","machine 機器","e"],
+[79,"equipment","n.","設備","🧰","equip（配備）+ ment：配備好的工具",""],
+[156,"monitor","n.","監視器、測機","📹","monitor 監視；測機片也叫 monitor wafer","t"],
+[257,"switch","n.","開關","🔘","switch 開關","e"],
+[191,"power","n.","力量","🔋","power on 開機","e"],
+[26,"beam","n.","光束","🔆","手電筒的光束",""],
+[82,"EUV","n.","極紫外光","💜","Extreme（極端）UltraViolet（紫外線）",""],
+[134,"lithography","n.","黃光／微影製程","🟡","litho（石頭）+ graph（寫）；廠內用黃色燈光",""],
+[81,"etching","n.","蝕刻製程","🖋️","etching 蝕刻＝用酸刻出圖案",""],
+[70,"diffusion","n.","擴散製程","🌫️","diffuse 擴散：香水味飄開",""],
+[267,"thin film","n.","薄膜製程","🫧","thin（薄）+ film（膜）：保鮮膜",""],
+[5,"acid","n.","酸","🍋","檸檬很酸",""],
+[94,"gas","n.","氣體","💨","加油站 gas station","e"],
+[132,"liquid","n.","液體","🧴","liquid 液體：洗手乳",""],
+[154,"metal","n.","金屬","🪙","heavy metal 重金屬音樂",""],
+[95,"glass","n.","玻璃、鏡片","🥛","玻璃杯；glasses 是眼鏡","e"],
+[149,"material","n.","原料","🧱","磚頭是蓋房子的 material",""],
+[40,"chemical","n.","化學、化學品","⚗️","chemistry 化學的形容詞",""],
+[11,"air shower","n.","潔淨通道","🚿","air 風 + shower 淋浴：進無塵室先被風吹",""],
+[44,"clean chamber","n.","潔淨室","🥼","clean 乾淨 + chamber 房間：穿兔寶寶裝進去",""],
+[78,"environment","n.","環境","🌿","environ（環繞）+ ment：環繞你的一切",""],
+[124,"laboratory","n.","實驗室","🧫","簡稱 lab","e"]
+]},
+{id:"g7",name:"製程流程",en:"PROCESS FLOW",sub:"一批貨從頭走到尾的路",
+story:"一批 **lot** 帶著 **run-card** 走 **route**：每個 **station** 站做一個 **step**。機台照 **recipe** 設好 **parameter**，像 **temperature**、**pressure**、**thickness**。做完量 **spec** 規格、看 **yield** 良率；不合格就 **rework** 重做。急件掛 **super hot run**，要優先處理。",
+w:[
+[200,"process","n.","過程、流程","🏭","pro（向前）+ cess（走）：一路往前走的過程",""],
+[209,"recipe","n.","食譜、處方程式","📜","食譜：告訴機台怎麼「煮」晶圓","t"],
+[223,"run-card","n.","流程卡","🪪","跟著批貨走的通行卡",""],
+[222,"run","v.","運轉、跑","🏃","機台在 run ＝運轉中","t"],
+[142,"lot","n.","批貨","🚛","一批晶圓叫一個 lot；a lot of 是很多","t"],
+[243,"split","n.","分帳、分批","🍌","banana split 香蕉船：把一根切成兩半","t"],
+[244,"stage","n.","站別、階段","🎭","舞台 stage：一幕一幕＝一站一站",""],
+[250,"step","n.","步驟","🪜","step by step 一步一步","e"],
+[248,"station","n.","站","🚉","車站：製程的一站","e"],
+[220,"route","n.","路線","🗺️","route 路線：批貨要走的路",""],
+[182,"phase","n.","階段","🌘","月亮有 phase（盈虧階段）",""],
+[219,"rework","v.","重做","♻️","re（再）+ work（做）",""],
+[146,"manufacture","v.","製造","🏭","manu（手）+ fact（做）：手做出來",""],
+[169,"operation","n.","操作","🕹️","operate 操作；手術也叫 operation",""],
+[175,"parameter","n.","參數","🎛️","para（旁邊）+ meter（測量）：旁邊的刻度＝參數",""],
+[195,"pressure","n.","壓力","🗜️","press 按壓 + ure",""],
+[265,"temperature","n.","溫度","🌡️","溫度計","e"],
+[266,"thickness","n.","厚度","📐","thick（厚）+ ness",""],
+[242,"speed","n.","速度","🏎️","speed 速度","e"],
+[241,"spec","n.","規格","📋","specification 的縮寫：寫明細節的規格",""],
+[287,"yield","n.","良率","🌾","農作物的收成：收成越多，良率越高",""],
+[254,"super hot run","n.","超級急件","🔥","super（超級）+ hot（燙手）+ run（快跑）",""],
+[89,"focus","n.","焦點","🔭","相機對焦 focus",""],
+[136,"loading","n.","負荷","⚖️","load + ing：機台扛了多少貨",""],
+[201,"product","n.","產品","🎁","produce 生產出來的東西","e"],
+[205,"quality","n.","品質","💎","quality 品質；quantity 數量（l 和 n 不同）",""],
+[97,"grade","n.","等級","🥇","成績 grade：A、B、C 等級","e"],
+[115,"inspection","n.","檢驗","🔬","inspect 的名詞",""],
+[127,"level","n.","程度","📶","level up 升級","e"]
+]},
+{id:"g8",name:"人與制度",en:"PEOPLE & RULES",sub:"同事、客戶、規定與安全",
+story:"**engineer** 訂 **SOP**，**leader** 和 **supervisor** 帶著 **technician** 照著做。**customer** 是客戶，**vendor** 是廠商。文件多半 **confidential** 機密，要通過 **audit** 稽核與 **certify** 認證。人身 **safe** 最重要：戴好 **helmet** 和 **gloves**，**protect** 自己。",
+w:[
+[75,"engineer","n.","工程師","👷","engine（引擎）+ er：搞機器的人","e"],
+[125,"leader","n.","組長","🚩","lead（帶領）+ er","e"],
+[255,"supervisor","n.","監督者","🧑‍💼","super（在上）+ vis（看）：站在上面看著",""],
+[263,"technician","n.","技術員","🧑‍🔧","technic（技術）+ ian：技術的人",""],
+[256,"support","n.","支援","🤝","sup（下面）+ port（搬）：從下面扛起來","e"],
+[23,"backup","n.","支援","🛟","back（後面）+ up：後面撐著的備援","t"],
+[118,"interview","n.","面試","💼","inter（互相）+ view（看）：彼此看一看",""],
+[120,"job","n.","工作","🧑‍🏭","job 工作","e"],
+[272,"training","n.","訓練","🥋","train 訓練 + ing","e"],
+[60,"customer","n.","客戶","🛍️","custom（習慣）+ er：習慣來買的人","e"],
+[279,"vendor","n.","廠商","🏪","vend（販賣）+ or：賣東西的人；販賣機 vending machine",""],
+[49,"company","n.","公司","🏢","com（一起）+ pany（麵包）：一起吃麵包的夥伴","e"],
+[233,"service","n.","服務","🛎️","櫃台的服務鈴","e"],
+[20,"automotive","a.","汽車的","🚗","auto（自己）+ motive（動）：自己會動的車",""],
+[18,"audit","v.","稽核、查核","🧾","諧音「奧迪」：開奧迪來查你的帳",""],
+[36,"certify","v.","證實、認證","🎓","certain（確定）+ ify（使成為）：使確定",""],
+[208,"re-certify","v.","重新認證","🎖️","re（再）+ certify",""],
+[53,"confidential","a.","機密的","🤫","con（完全）+ fid（信任）：只信任的人才能看",""],
+[221,"rule","n.","規則","🚦","rule 規則：紅綠燈","e"],
+[224,"S.O.P","n.","標準作業程序","📘","Standard Operating Procedure：照著書做",""],
+[245,"standard","n.","標準","⭐","stand（站）+ ard：站得住腳的就是標準",""],
+[225,"safe","a.","安全的","🛡️","safe 安全","e"],
+[202,"protect","v.","保護","🔰","pro（在前）+ tect（蓋）：蓋在前面擋著",""],
+[96,"gloves","n.","手套","🧤","gloves","e"],
+[103,"helmet","n.","安全帽","⛑️","helmet 頭盔","e"],
+[199,"priority","n.","優先順序","1️⃣","prior（先）：先做的事＝優先",""],
+[262,"target","n.","目標","🎯","射飛鏢的靶心",""],
+[27,"benchmark","n.","標竿學習","🪑","bench（長凳）+ mark：在長凳上刻記號當基準",""],
+[184,"plan","n.","計劃","🗒️","plan 計畫","e"],
+[76,"enhance","v.","增進","🚀","en（使）+ hance（高）：使變高",""],
+[109,"improve","v.","改善","🌱","越改越好",""],
+[108,"impact","n.","影響","💥","im（進）+ pact（打）：撞進去＝影響",""],
+[1,"ability","n.","能力","💪","able（能）+ ity",""],
+[21,"available","a.","可使用的","🟩","avail（有用）+ able：可以拿來用",""],
+[197,"price","n.","價格","🏷️","price 價格","e"]
+]},
+{id:"g9",name:"電腦與資訊",en:"COMPUTER",sub:"登入、螢幕、網路、密碼",
+story:"開 **computer**，在 **screen** 上輸入 **username** 和 **password**。用 **keyboard** 操作 **system**，在 **window** 裡查 **data** 和 **information**。**AI** 會幫忙分析，連上 **internet** 的 **link** 要小心。",
+w:[
+[10,"AI","n.","人工智慧","🧠","Artificial（人工）Intelligence（智慧）","e"],
+[51,"computer","n.","電腦","💻","computer","e"],
+[64,"data","n.","資料","💽","data 資料","e"],
+[93,"function","n.","功能","🧩","手機的功能",""],
+[101,"hard-disk","n.","硬盤","💿","hard（硬）+ disk（碟）","e"],
+[111,"information","n.","資訊","ℹ️","inform + ation","e"],
+[117,"internet","n.","網際網路","🌐","inter（之間）+ net（網）","e"],
+[122,"keyboard","n.","鍵盤","⌨️","key（鍵）+ board（板）","e"],
+[131,"link","n.","連結","🔗","鎖鏈的一環 link","e"],
+[179,"password","n.","密碼","🔑","pass（通過）+ word：通關密語","e"],
+[183,"photo","n.","相片","📷","photo","e"],
+[230,"screen","n.","螢幕","🖥️","screen 螢幕","e"],
+[258,"system","n.","系統","🕸️","system 系統","e"],
+[264,"telephone","n.","電話","☎️","tele（遠）+ phone（聲音）：遠方的聲音","e"],
+[278,"username","n.","使用者名稱","👤","user（使用者）+ name","e"],
+[286,"window","n.","視窗","🪟","Windows 作業系統","e"]
+]},
+{id:"g10",name:"文件與訊息",en:"PAPERWORK",sub:"表單、紀錄、通知、報告",
+story:"每班要填 **log sheet**，寫下 **record** 與 **remark**。看 **instruction** 指令，留意 **notice** 通知與 **message** 訊息。**report** 要附 **chart** 圖表，有 **issue** 議題就貼 **label** 或 **tag**。**status** 要隨時更新。",
+w:[
+[38,"chart","n.","圖表","📊","圖表","e"],
+[48,"comment","n.","評論","💬","對話框＝評論","e"],
+[71,"document","n.","文件","📄","document 文件","e"],
+[83,"event","n.","事件","🎪","event 事件；活動","e"],
+[99,"group","n.","群組","👥","group 群組","e"],
+[116,"instruction","n.","指令","📝","instruct（教導）+ ion：照著指示做",""],
+[119,"issue","n./v.","議題／發行","📰","雜誌一期叫 issue＝發行；也是「議題」","t"],
+[123,"label","n.","標籤","🔖","衣服上的 label","e"],
+[133,"list","n.","清單","📃","購物清單 shopping list","e"],
+[140,"log sheet","n.","工作紀錄","🪵","log 原木：航海日誌 log 一頁一頁記",""],
+[147,"mark","n.","記號","✔️","mark 記號；分數叫 marks","e"],
+[153,"message","n.","訊息","✉️","手機訊息 message","e"],
+[162,"note","n.","註解","🗒️","筆記 note","e"],
+[163,"notice","n.","通知","📮","公佈欄的 notice","e"],
+[173,"page","n.","頁數","📖","一頁 page","e"],
+[210,"record","n.","記錄","🎙️","record 錄音＝記錄","e"],
+[213,"remark","n.","註記","🗨️","re（再）+ mark：再做個記號",""],
+[217,"report","n.","報告","🗞️","report 報告","e"],
+[234,"sheet","n.","表單","🛏️","bed sheet 床單：一張一張的紙＝表單","e"],
+[240,"source","n.","來源","🌊","水源 source：東西從哪來",""],
+[249,"status","n.","狀況","🚥","紅綠燈顯示現在的 status",""],
+[259,"tag","n./v.","標籤／標註","🏷️","吊牌 tag","e"],
+[269,"title","n.","標題","🔠","書名／標題","e"]
+]},
+{id:"g11",name:"日常基礎字",en:"EVERYDAY",sub:"大多數你已經會，快速掃過就好",
+story:"這一組多半是國中就學過的字：**color**、**green**、**number**、**office**、**light**、**paper**、**card**。重點只有幾個：**actual** 是「真實的」，不是「現在的」；**decline** 是往下斜，所以是「減少」；**quantity** 是數量，別和 **quality** 品質搞混。",
+w:[
+[6,"active","a.","主動的","🏃‍♂️","act（行動）+ ive：會主動行動","e"],
+[7,"actual","a.","真實的","💯","actual 是「真的」，不是「現在的」","t"],
+[25,"basic","a.","基礎的","🧱","base（基底）+ ic","e"],
+[47,"color","n.","顏色","🎨","color","e"],
+[98,"green","n.","綠色","🟩","green","e"],
+[151,"mechanical","a.","機械的","⚙️","mechanic（技師）+ al",""],
+[180,"perfect","a.","完美的","✨","per（完全）+ fect（做）：做到完全","e"],
+[181,"personal","a.","個人的","🙍","person + al","e"],
+[253,"super","a.","超級的","🦸","Superman","e"],
+[59,"count","v.","計算","🔢","count 數數","e"],
+[164,"number","n.","號碼","#️⃣","number","e"],
+[206,"quantity","n.","數量","🧮","quantity 數量；quality 品質",""],
+[207,"rate","n.","比率","📈","良率 yield rate","e"],
+[22,"average","n.","平均","⚖️","average 平均","e"],
+[66,"decline","v.","減少","📉","de（下）+ cline（斜）：往下斜＝減少",""],
+[273,"trend","n.","趨勢","〽️","trend 趨勢（流行）","e"],
+[16,"area","n.","區域","🗺️","area 區域","e"],
+[35,"center","n.","中心","🎯","center 中心","e"],
+[88,"floor","n.","地板","🟫","floor 地板、樓層","e"],
+[137,"lobby","n.","大廳","🛋️","飯店大廳 lobby","e"],
+[138,"location","n.","位置","📍","locate 定位 + tion","e"],
+[165,"office","n.","辦公室","🏬","office","e"],
+[187,"point","n.","點","👉","point 手指著那一點","e"],
+[188,"position","n.","位置","🧍","position 站的位置","e"],
+[28,"bottle","n.","瓶子","🍼","bottle","e"],
+[32,"card","n.","卡片","💳","card","e"],
+[33,"cart","n.","手推車","🛒","購物推車","e"],
+[106,"hole","n.","孔、洞","⭕","hole 洞；whole 全部（發音一樣）","e"],
+[129,"light","n.","光","💡","light","e"],
+[130,"line","n.","直線","➖","line 線","e"],
+[174,"paper","n.","紙張","📄","paper","e"],
+[176,"part","n.","零件","🔩","part 部分＝零件","e"],
+[261,"tape","n.","膠帶","🩹","tape 膠帶","e"]
+]}
+];
+
+(function(){
+'use strict';
+
+/* ---------- data ---------- */
+var WORDS=[],BYNO={};
+GROUPS.forEach(function(g){
+  g.words=g.w.map(function(a){
+    var o={no:a[0],en:a[1],pos:a[2],zh:a[3],ic:a[4],hook:a[5],flag:a[6]||'',g:g.id};
+    WORDS.push(o);BYNO[o.no]=o;return o;
+  });
+});
+var TOTAL=WORDS.length;
+var LS_KEY='tsmc288-known-v1';
+var known=new Set();
+try{
+  var raw=localStorage.getItem(LS_KEY);
+  if(raw){JSON.parse(raw).forEach(function(n){if(BYNO[n])known.add(n);});}
+}catch(e){}
+function persist(){try{localStorage.setItem(LS_KEY,JSON.stringify(Array.from(known)));}catch(e){}}
+
+/* ---------- helpers ---------- */
+function $(s){return document.querySelector(s);}
+var view=$('#view');
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function gk(g){var n=0;g.words.forEach(function(w){if(known.has(w.no))n++;});return n;}
+function fmtStory(s){return s.replace(/\*\*(.+?)\*\*/g,'<mark>$1</mark>');}
+var CAN_SPEAK=('speechSynthesis' in window)&&('SpeechSynthesisUtterance' in window);
+function speak(t){
+  if(!CAN_SPEAK)return;
+  try{var u=new SpeechSynthesisUtterance(t.replace(/[.\/-]/g,' '));u.lang='en-US';u.rate=.85;window.speechSynthesis.cancel();window.speechSynthesis.speak(u);}catch(e){}
+}
+var SPK='<svg class="sp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
+function spkBtn(no,label){return CAN_SPEAK?'<button type="button" class="mini" data-speak="'+no+'" aria-label="發音 '+BYNO[no].en+'">'+SPK+(label||'')+'</button>':'';}
+function poolFor(scope){
+  if(scope==='all')return WORDS.slice();
+  if(scope==='unknown')return WORDS.filter(function(w){return !known.has(w.no);});
+  var g=GROUPS.filter(function(x){return x.id===scope;})[0];
+  return g?g.words.slice():WORDS.slice();
+}
+function scopeOptions(sel){
+  var un=WORDS.filter(function(w){return !known.has(w.no);}).length;
+  var h='<option value="all"'+(sel==='all'?' selected':'')+'>全部 '+TOTAL+' 字</option>';
+  h+='<option value="unknown"'+(sel==='unknown'?' selected':'')+'>還不會的（'+un+'）</option>';
+  GROUPS.forEach(function(g){h+='<option value="'+g.id+'"'+(sel===g.id?' selected':'')+'>'+g.name+'（'+g.words.length+'）</option>';});
+  return h;
+}
+
+/* ---------- state ---------- */
+var st={
+  tab:'learn',gid:GROUPS[0].id,mask:false,hard:false,hide:false,armReset:false,
+  flash:{scope:'all',shuffle:true,deck:[],i:0,ok:0,again:0,done:false,started:false},
+  quiz:{scope:'all',mode:'en2zh',phase:'setup',qs:[],i:0,score:0,picked:null,wrong:[],msg:''}
+};
+
+/* ---------- wafer map ---------- */
+var ORDER=WORDS; /* display order = group order */
+var dotEls=[];
+(function buildWafer(){
+  var n=21,c=10,cells=[],r,q;
+  for(r=0;r<n;r++)for(q=0;q<n;q++)cells.push({r:r,q:q,d:Math.hypot(r-c,q-c)});
+  cells.sort(function(a,b){return a.d-b.d;});
+  var pick=cells.slice(0,TOTAL).sort(function(a,b){return a.r-b.r||a.q-b.q;});
+  var h='<circle class="base" cx="105" cy="105" r="103"/><circle class="notch" cx="105" cy="208" r="6"/>';
+  pick.forEach(function(p,i){
+    var w=ORDER[i];
+    h+='<circle class="d" data-i="'+i+'" cx="'+(5+p.q*10)+'" cy="'+(5+p.r*10)+'" r="3.6"><title>'+w.en+' '+w.zh+'</title></circle>';
+  });
+  $('#wafer').innerHTML=h;
+  dotEls=Array.prototype.slice.call($('#wafer').querySelectorAll('circle.d'));
+})();
+
+function updateChrome(){
+  var k=known.size;
+  $('#kc').textContent=k;
+  $('#bar').style.width=(k/TOTAL*100)+'%';
+  $('#tag').textContent=(k===TOTAL)?'整片晶圓全亮，288 字全部通關。':'點亮每一顆晶粒，整片晶圓全亮就通關。';
+  for(var i=0;i<dotEls.length;i++){dotEls[i].classList.toggle('on',known.has(ORDER[i].no));}
+  Array.prototype.forEach.call(document.querySelectorAll('.nav button'),function(b){
+    b.setAttribute('aria-current',b.dataset.tab===st.tab?'page':'false');
+  });
+}
+function setKnown(no,v){
+  if(v)known.add(no);else known.delete(no);
+  persist();updateChrome();
+}
+
+/* ---------- learn ---------- */
+function cardHtml(w){
+  var k=known.has(w.no);
+  return '<article class="card'+(k?' known':'')+'" id="w'+w.no+'">'+
+    '<div class="ic" aria-hidden="true">'+w.ic+'</div>'+
+    '<div class="body">'+
+      '<div class="line1"><span class="w">'+w.en+'</span><span class="pos">'+w.pos+'</span>'+(w.flag==='t'?'<span class="trap">字義特殊</span>':'')+'</div>'+
+      '<div class="reveal"><p class="zh">'+w.zh+'</p><p class="hook">'+w.hook+'</p></div>'+
+      '<div class="acts">'+spkBtn(w.no,'')+'<button type="button" class="mini" data-know="'+w.no+'" aria-pressed="'+k+'">'+(k?'✓ 會了':'會了')+'</button></div>'+
+    '</div></article>';
+}
+function renderLearn(){
+  var prev=$('#chips'),sl=prev?prev.scrollLeft:0;
+  var g=GROUPS.filter(function(x){return x.id===st.gid;})[0];
+  var list=g.words;
+  if(st.hard)list=list.filter(function(w){return w.flag!=='e';});
+  if(st.hide)list=list.filter(function(w){return !known.has(w.no);});
+  var chips=GROUPS.map(function(x){
+    return '<button type="button" class="chip" data-g="'+x.id+'" aria-pressed="'+(x.id===g.id)+'">'+x.name+'<small>'+gk(x)+'/'+x.words.length+'</small></button>';
+  }).join('');
+  view.innerHTML=
+    '<div class="chips" id="chips">'+chips+'</div>'+
+    '<div class="ghead"><h2>'+g.name+'</h2><span class="gen">'+g.en+'</span><span class="gsub">'+g.sub+'</span></div>'+
+    '<p class="story">'+fmtStory(g.story)+'</p>'+
+    '<div class="tools">'+
+      '<label><input type="checkbox" id="mask"'+(st.mask?' checked':'')+'>遮住中文自測（點卡片揭曉）</label>'+
+      '<label><input type="checkbox" id="hard"'+(st.hard?' checked':'')+'>只看難字</label>'+
+      '<label><input type="checkbox" id="hide"'+(st.hide?' checked':'')+'>隱藏已會</label>'+
+    '</div>'+
+    '<div class="grid'+(st.mask?' mask':'')+'">'+(list.length?list.map(cardHtml).join(''):'<p class="empty">這一組沒有符合條件的字。</p>')+'</div>'+
+    '<div class="reset"><button type="button" data-act="reset">'+(st.armReset?'再按一次，清除全部進度':'清除我的進度')+'</button></div>';
+  var ch=$('#chips'),act=ch.querySelector('[aria-pressed="true"]');
+  if(prev){ch.scrollLeft=sl;}
+  if(act&&!prev){ch.scrollLeft=Math.max(0,act.offsetLeft-(ch.clientWidth-act.offsetWidth)/2);}
+}
+function patchLearnCard(no){
+  var card=document.getElementById('w'+no);if(!card)return;
+  var k=known.has(no);
+  card.classList.toggle('known',k);
+  var b=card.querySelector('[data-know]');
+  b.setAttribute('aria-pressed',k);b.textContent=k?'✓ 會了':'會了';
+  GROUPS.forEach(function(g){
+    var c=document.querySelector('.chip[data-g="'+g.id+'"] small');
+    if(c)c.textContent=gk(g)+'/'+g.words.length;
+  });
+}
+function goToWord(no){
+  var w=BYNO[no];st.tab='learn';st.gid=w.g;st.hard=false;st.hide=false;
+  render();
+  var el=document.getElementById('w'+no);
+  if(el){
+    el.scrollIntoView({block:'center'});
+    el.classList.add('pulse');
+    setTimeout(function(){el.classList.remove('pulse');},1600);
+  }
+}
+
+/* ---------- flashcards ---------- */
+function buildDeck(){
+  var f=st.flash,p=poolFor(f.scope);
+  f.deck=f.shuffle?shuffle(p):p;
+  f.i=0;f.ok=0;f.again=0;f.done=false;f.started=true;
+}
+function renderFlash(){
+  var f=st.flash;if(!f.started)buildDeck();
+  var head='<div class="ctl"><label class="sel">範圍<select id="fscope">'+scopeOptions(f.scope)+'</select></label>'+
+    '<label><input type="checkbox" id="fshuffle"'+(f.shuffle?' checked':'')+'>隨機順序</label></div>';
+  if(!f.deck.length){
+    view.innerHTML=head+'<p class="empty">這個範圍的字你都學會了。換一組，或選「全部」再複習一次。</p>';return;
+  }
+  if(f.done){
+    view.innerHTML=head+'<div class="panel"><p class="score">'+f.ok+' / '+f.deck.length+'</p>'+
+      '<p style="text-align:center">這一輪結束：會了 '+f.ok+' 張，要再看 '+f.again+' 張。</p>'+
+      '<div class="row"><button type="button" class="btn" data-act="fagain">同範圍再來一輪</button><button type="button" class="btn primary" data-act="funknown">只練還不會的</button></div></div>';
+    return;
+  }
+  var w=f.deck[f.i];
+  view.innerHTML=head+
+    '<p class="fcount">第 '+(f.i+1)+' / '+f.deck.length+' 張</p>'+
+    '<div class="flipwrap"><div class="flip" id="flipcard" role="button" tabindex="0" aria-label="翻面看中文"><div class="flip-inner">'+
+      '<div class="face"><div class="bigic" aria-hidden="true">'+w.ic+'</div><div class="bigw">'+w.en+'</div><div class="pos">'+w.pos+'</div>'+spkBtn(w.no,' 發音')+'<div class="hint">點卡片翻面</div></div>'+
+      '<div class="face back"><div class="bigzh">'+w.zh+'</div><p class="hook" style="color:var(--ink);font-size:1rem">'+w.hook+'</p><div class="hint">'+w.en+(w.flag==='t'?' · 字義特殊':'')+'</div></div>'+
+    '</div></div></div>'+
+    '<div class="fbtns"><button type="button" class="btn" data-act="fagainone">再看一次</button><button type="button" class="btn" data-act="fflip">翻面</button><button type="button" class="btn primary" data-act="fknow">會了</button></div>'+
+    '<p class="hint" style="text-align:center;margin-top:10px">鍵盤：空白鍵翻面，→ 會了，← 再看一次</p>';
+}
+function flipCard(){var c=$('#flipcard');if(c)c.classList.toggle('on');}
+function flashNext(ok){
+  var f=st.flash,w=f.deck[f.i];if(!w)return;
+  setKnown(w.no,ok);
+  if(ok)f.ok++;else f.again++;
+  f.i++;if(f.i>=f.deck.length)f.done=true;
+  renderFlash();
+}
+
+/* ---------- quiz ---------- */
+var MODES={
+  en2zh:{name:'英文 → 中文',desc:'看英文，選出正確的中文'},
+  zh2en:{name:'中文 → 英文',desc:'看中文，選出正確的英文'},
+  pic:{name:'看圖猜字',desc:'只給圖示，選出對應的英文'}
+};
+function makeQs(pool,mode){
+  var key=mode==='en2zh'?'zh':'en';
+  return shuffle(pool).slice(0,10).map(function(w){
+    var cand=shuffle(WORDS.filter(function(x){return x.no!==w.no&&x[key]!==w[key];}));
+    var same=cand.filter(function(x){return x.pos===w.pos;}),rest=cand.filter(function(x){return x.pos!==w.pos;});
+    return {w:w,opts:shuffle([w].concat(same.concat(rest).slice(0,3)))};
+  });
+}
+function renderQuiz(){
+  var q=st.quiz;
+  if(q.phase==='setup'){
+    var modes=Object.keys(MODES).map(function(m){
+      return '<label><input type="radio" name="qmode" value="'+m+'"'+(q.mode===m?' checked':'')+'><span><b>'+MODES[m].name+'</b><small>'+MODES[m].desc+'</small></span></label>';
+    }).join('');
+    view.innerHTML='<div class="panel"><h2 style="margin:0 0 4px;font-size:1.3rem">10 題小測驗</h2>'+
+      '<p style="color:var(--muted)">答對的字會自動標成「會了」，答錯的會取消，晶圓上的亮點跟著變。</p>'+
+      '<div class="ctl" style="margin-top:12px"><label class="sel">範圍<select id="qscope">'+scopeOptions(q.scope)+'</select></label></div>'+
+      '<div class="modes">'+modes+'</div>'+
+      (q.msg?'<p style="color:var(--bad);margin-bottom:10px">'+q.msg+'</p>':'')+
+      '<button type="button" class="btn primary" style="width:100%" data-act="qstart">開始測驗</button></div>';
+    return;
+  }
+  if(q.phase==='result'){
+    var n=q.qs.length;
+    var wl=q.wrong.map(function(w){return '<div><b style="font-family:var(--f-display);font-size:1.15rem">'+w.en+'</b> '+w.zh+'<p class="hook">'+w.ic+' '+w.hook+'</p></div>';}).join('');
+    view.innerHTML='<div class="panel"><p class="hint" style="text-align:center">本次成績</p><p class="score">'+q.score+' / '+n+'</p>'+
+      '<p style="text-align:center">'+(q.score===n?'全對！這 '+n+' 個字已點亮。':(q.wrong.length+' 個字要再加強，已先取消標記。'))+'</p>'+
+      (q.wrong.length?'<div class="wl">'+wl+'</div>':'')+
+      '<div class="row"><button type="button" class="btn" data-act="qsetup">換範圍或模式</button><button type="button" class="btn primary" data-act="qstart">再測一次</button></div></div>';
+    return;
+  }
+  var cur=q.qs[q.i],w=cur.w,mode=q.mode,key=mode==='en2zh'?'zh':'en';
+  var prompt;
+  if(mode==='en2zh')prompt='<div class="bigw">'+w.en+'</div><div class="pos">'+w.pos+'</div>'+spkBtn(w.no,' 發音');
+  else if(mode==='zh2en')prompt='<div class="bigzh">'+w.zh+'</div><div class="pos">'+w.pos+'</div>';
+  else prompt='<div class="bigic" aria-hidden="true">'+w.ic+'</div><div class="pos">這個圖示代表哪個字？</div>';
+  var answered=q.picked!==null;
+  var opts=cur.opts.map(function(o){
+    var cls='opt',mk='';
+    if(answered){
+      if(o.no===w.no){cls+=' correct';mk='✓ 正確';}
+      else if(o.no===q.picked){cls+=' wrong';mk='✗ 你選的';}
+    }
+    return '<button type="button" class="'+cls+'" data-pick="'+o.no+'"'+(answered?' disabled':'')+'><span>'+o[key]+'</span><span class="mk">'+mk+'</span></button>';
+  }).join('');
+  var fb='';
+  if(answered){
+    var okk=q.picked===w.no;
+    fb='<div class="fb"><p><b>'+w.en+'</b>　'+w.zh+'　<span class="pos">'+(okk?'答對了':'答錯了')+'</span></p><p class="hook" style="color:var(--ink)">'+w.ic+' '+w.hook+'</p></div>'+
+       '<div class="row"><button type="button" class="btn primary" data-act="qnext">'+(q.i+1>=q.qs.length?'看成績':'下一題')+'</button></div>';
+  }
+  view.innerHTML='<p class="fcount">第 '+(q.i+1)+' / '+q.qs.length+' 題</p>'+
+    '<div class="panel"><div class="qprompt" style="display:flex;flex-direction:column;align-items:center;gap:6px">'+prompt+'</div><div class="opts">'+opts+'</div>'+fb+'</div>';
+}
+
+/* ---------- router ---------- */
+function render(){
+  if(st.tab==='learn')renderLearn();
+  else if(st.tab==='flash')renderFlash();
+  else renderQuiz();
+  updateChrome();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-speak],[data-know],[data-g],[data-tab],[data-act],[data-pick],.reveal,#flipcard,.d');
+  if(!el)return;
+  var d=el.dataset;
+  if(d.speak){speak(BYNO[d.speak].en);return;}
+  if(el.classList&&el.classList.contains('d')){goToWord(ORDER[+d.i].no);return;}
+  if(d.tab){st.tab=d.tab;st.armReset=false;render();window.scrollTo(0,0);return;}
+  if(d.g){st.gid=d.g;render();return;}
+  if(d.know){
+    var no=+d.know,v=!known.has(no);
+    setKnown(no,v);
+    if(st.hide&&v)render();else patchLearnCard(no);
+    return;
+  }
+  if(el.classList.contains('reveal')){el.closest('.card').classList.toggle('shown');return;}
+  if(el.id==='flipcard'){flipCard();return;}
+  if(d.pick){
+    var q=st.quiz;if(q.picked!==null)return;
+    var cur=q.qs[q.i],no2=+d.pick;
+    q.picked=no2;
+    if(no2===cur.w.no){q.score++;setKnown(cur.w.no,true);}
+    else{q.wrong.push(cur.w);setKnown(cur.w.no,false);}
+    renderQuiz();return;
+  }
+  switch(d.act){
+    case 'reset':
+      if(!st.armReset){st.armReset=true;renderLearn();}
+      else{known.clear();persist();st.armReset=false;render();}
+      break;
+    case 'fflip':flipCard();break;
+    case 'fknow':flashNext(true);break;
+    case 'fagainone':flashNext(false);break;
+    case 'fagain':buildDeck();renderFlash();break;
+    case 'funknown':st.flash.scope='unknown';buildDeck();renderFlash();break;
+    case 'qsetup':st.quiz.phase='setup';st.quiz.msg='';renderQuiz();break;
+    case 'qstart':
+      var pool=poolFor(st.quiz.scope);
+      if(pool.length<4){st.quiz.phase='setup';st.quiz.msg='這個範圍的字太少，請換一個範圍。';renderQuiz();break;}
+      st.quiz.qs=makeQs(pool,st.quiz.mode);st.quiz.i=0;st.quiz.score=0;st.quiz.picked=null;st.quiz.wrong=[];st.quiz.msg='';st.quiz.phase='play';
+      renderQuiz();break;
+    case 'qnext':
+      st.quiz.i++;st.quiz.picked=null;
+      if(st.quiz.i>=st.quiz.qs.length)st.quiz.phase='result';
+      renderQuiz();break;
+  }
+});
+document.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.id==='mask'){st.mask=t.checked;renderLearn();}
+  else if(t.id==='hard'){st.hard=t.checked;renderLearn();}
+  else if(t.id==='hide'){st.hide=t.checked;renderLearn();}
+  else if(t.id==='fscope'){st.flash.scope=t.value;buildDeck();renderFlash();}
+  else if(t.id==='fshuffle'){st.flash.shuffle=t.checked;buildDeck();renderFlash();}
+  else if(t.id==='qscope'){st.quiz.scope=t.value;}
+  else if(t.name==='qmode'){st.quiz.mode=t.value;}
+});
+document.addEventListener('keydown',function(e){
+  if(st.tab!=='flash'||st.flash.done||!st.flash.deck.length)return;
+  var tag=e.target.tagName;
+  if(tag==='SELECT'||tag==='INPUT')return;
+  if(e.key==='ArrowRight'){e.preventDefault();flashNext(true);}
+  else if(e.key==='ArrowLeft'){e.preventDefault();flashNext(false);}
+  else if((e.key===' '||e.key==='Enter')&&tag!=='BUTTON'){e.preventDefault();flipCard();}
+});
+
+render();
+})();
+</script>
+
+</body>
+</html>
