@@ -801,7 +801,7 @@ var PATTERNS=[
 var KEY='tsmc288-srs-v1',OLD='tsmc288-known-v1';
 var INTERVAL=[1,1,2,4,7]; /* 答錯的字也是隔天才再考 */
 function today(){var n=new Date();return Math.floor((n.getTime()-n.getTimezoneOffset()*60000)/86400000);}
-var S={box:{},d:{},exam:'',perDay:0,hist:[],extra:{},autoN:2,td:{day:0,list:[],taught:0,done:false,rdone:false}};
+var S={box:{},d:{},exam:'',perDay:0,hist:[],extra:{},autoN:2,td:{day:0,list:[],taught:0,done:false,ok:{}}};
 (function load(){
   try{
     var raw=localStorage.getItem(KEY);
@@ -813,12 +813,18 @@ var S={box:{},d:{},exam:'',perDay:0,hist:[],extra:{},autoN:2,td:{day:0,list:[],t
       if(o.extra){for(k in o.extra){n=+k;if(BYNO[n])S.extra[n]=(+o.extra[k]||0);}}
       if(o.autoN===0||o.autoN===2||o.autoN===3)S.autoN=o.autoN;
       if(Array.isArray(o.hist))S.hist=o.hist.filter(function(h){return h&&typeof h.s==='number';}).slice(-20);
-      if(o.td&&Array.isArray(o.td.list))S.td={day:+o.td.day||0,list:o.td.list.filter(function(x){return BYNO[x];}),taught:+o.td.taught||0,done:!!o.td.done,rdone:!!o.td.rdone};
+      if(o.td&&Array.isArray(o.td.list)){
+        S.td={day:+o.td.day||0,list:o.td.list.filter(function(x){return BYNO[x];}),taught:+o.td.taught||0,done:!!o.td.done,ok:{}};
+        if(o.td.ok&&typeof o.td.ok==='object'){for(k in o.td.ok){n=+k;if(BYNO[n])S.td.ok[n]=1;}}
+      }
     }else{
       var old=localStorage.getItem(OLD);
       if(old){JSON.parse(old).forEach(function(x){if(BYNO[x]){S.box[x]=1;S.d[x]=today()-1;}});}
     }
   }catch(e){}
+  /* 舊版留下的：沒學過卻在多複習裡的字，不要同時排進新字 */
+  S.td.list=S.td.list.filter(function(n){return !(S.extra[n]!==undefined&&S.box[n]===undefined);});
+  if(S.td.taught>S.td.list.length)S.td.taught=S.td.list.length;
 })();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 var known=new Set(); /* 熟練 = 隔天以上再答對（box>=2） */
@@ -835,19 +841,43 @@ function grade(no,ok){
 /* ---------- 多複習清單 ---------- */
 function inExtra(no){return S.extra[no]!==undefined;}
 function extraIds(){return WORDS.filter(function(w){return inExtra(w.no);}).map(function(w){return w.no;});}
-function setExtra(no,on){if(on){if(!inExtra(no))S.extra[no]=0;}else{delete S.extra[no];}save();}
-/* 答題後更新連續答對次數；回傳 true 代表剛被自動移出 */
-function extraAnswer(no,ok){
-  if(!inExtra(no))return false;
-  if(!ok){S.extra[no]=0;save();return false;}
-  S.extra[no]=(S.extra[no]||0)+1;
-  if(S.autoN>0&&S.extra[no]>=S.autoN){delete S.extra[no];save();return true;}
-  save();return false;
+function setExtra(no,on){
+  ensureToday();
+  if(on){
+    if(!inExtra(no))S.extra[no]=0;
+    delete S.td.ok[no];   /* 加入後，今天的複習就會出現它 */
+    if(S.box[no]===undefined){   /* 沒學過的字改由「複習」直接考，不再排在今天的新字裡 */
+      var i=S.td.list.indexOf(no);
+      if(i>=0){S.td.list.splice(i,1);if(i<S.td.taught)S.td.taught--;var more=pickNew(1,S.td.list);if(more.length){S.td.list=S.td.list.concat(more);S.td.done=false;}}
+    }
+  }
+  else{delete S.extra[no];}
+  save();
 }
-function extraNote(no,removed){
-  if(removed)return '連續答對 '+S.autoN+' 次，已從多複習移出。';
-  if(inExtra(no)&&S.autoN>0)return '多複習：連續答對 '+(S.extra[no]||0)+' / '+S.autoN+' 次。';
-  return '';
+/* 一次答題的全部記錄（只有「會記進度」的作答才會呼叫）：
+   熟練進度、多複習清單、「今天已經答對」三件事都在這裡處理。
+   答錯 → 自動加進多複習；多複習的字連續答對 N 次 → 自動移出。
+   first=false 是答錯後的重答：只算「今天答對了」，不加分。 */
+function record(no,ok,first){
+  ensureToday();
+  var r={note:'',removed:false};
+  if(!ok){
+    grade(no,false);delete S.td.ok[no];
+    r.note=inExtra(no)?'多複習：連續答對次數歸零，會再考你。':'已加進多複習，會再考你。';
+    S.extra[no]=0;
+  }else{
+    S.td.ok[no]=1;
+    if(first){
+      grade(no,true);
+      if(inExtra(no)){
+        S.extra[no]=(S.extra[no]||0)+1;
+        if(S.autoN>0&&S.extra[no]>=S.autoN){delete S.extra[no];r.removed=true;r.note='連續答對 '+S.autoN+' 次，已移出多複習。';}
+        else if(S.autoN>0)r.note='多複習：連續答對 '+S.extra[no]+' / '+S.autoN+' 次。';
+      }
+    }
+  }
+  save();
+  return r;
 }
 function isDue(no){var b=S.box[no];return b!==undefined&&S.d[no]+INTERVAL[b]<=today();}
 function unseen(){return WORDS.filter(function(w){return S.box[w.no]===undefined;});}
@@ -866,9 +896,9 @@ function suggest(){
 }
 function perDay(){return S.perDay||suggest();}
 function pickNew(n,exclude){
-  var un=unseen().filter(function(w){return exclude.indexOf(w.no)<0;});
-  var X=un.filter(function(w){return inExtra(w.no);}).slice(0,n);   /* 想多練的新字優先教 */
-  var rest=un.filter(function(w){return !inExtra(w.no);}),k=n-X.length;
+  var un=unseen().filter(function(w){return exclude.indexOf(w.no)<0&&!inExtra(w.no);});   /* 多複習的字由「複習」負責，不重複排進新字 */
+  var X=[];
+  var rest=un,k=n;
   var E=rest.filter(function(w){return w.flag==='e';});
   var H=rest.filter(function(w){return w.flag!=='e';}).sort(function(a,b){return (a.flag==='t'?0:1)-(b.flag==='t'?0:1);});
   var nE=Math.round(k/2),out=E.slice(0,nE);
@@ -878,16 +908,26 @@ function pickNew(n,exclude){
 }
 function ensureToday(){
   var t=today();
-  if(S.td.day!==t){S.td={day:t,list:pickNew(perDay(),[]),taught:0,done:false,rdone:false};save();}
+  if(S.td.day!==t){S.td={day:t,list:pickNew(perDay(),[]),taught:0,done:false,ok:{}};save();}
+}
+/* 改了每天新字數或考試日：保留今天已經看過的字，其餘重排 */
+function regenToday(){
+  ensureToday();
+  var keep=S.td.list.slice(0,S.td.taught),more=pickNew(Math.max(0,perDay()-keep.length),keep);
+  S.td.list=keep.concat(more);S.td.taught=keep.length;
+  if(more.length)S.td.done=false;
+  save();
 }
 function dueList(){
   return WORDS.filter(function(w){return isDue(w.no)&&S.td.list.indexOf(w.no)<0;})
     .sort(function(a,b){return S.box[a.no]-S.box[b.no];}).slice(0,40).map(function(w){return w.no;});
 }
-/* 複習 = 多複習清單（學過的）+ 今天到期的字，一次最多 40 題 */
+/* 複習 = 還沒在今天答對的「多複習清單」字 + 今天到期的字，一次最多 40 題。
+   答錯的字會自動進多複習，所以也在這裡；加入多複習的字（學過或沒學過）今天就會出現。 */
 function reviewIds(){
-  var ex=shuffle(extraIds().filter(function(n){return S.box[n]!==undefined&&S.td.list.indexOf(n)<0;}));
-  var out=ex.concat(dueList().filter(function(n){return ex.indexOf(n)<0;}));
+  ensureToday();
+  var ex=shuffle(extraIds().filter(function(n){return !S.td.ok[n];}));
+  var out=ex.concat(dueList().filter(function(n){return ex.indexOf(n)<0&&!S.td.ok[n];}));
   return out.slice(0,40);
 }
 
@@ -1030,8 +1070,8 @@ var st={
   flash:{scope:'all',shuffle:true,deck:[],i:0,ok:0,again:0,done:false,started:false}
 };
 try{if(localStorage.getItem('tsmc288-showzh')==='0')st.showzh=false;}catch(e){}
-var Q={scope:'all',mode:'mix',n:10,phase:'setup',qs:[],i:0,score:0,picked:null,wrong:[],msg:'',exam:false,removedNo:null};
-var T={phase:'home',kind:'new',next:null,teach:[],ti:0,queue:[],qi:0,cur:null,picked:null,ok1:0,total:0,wrongSet:[],removed:[],removedNo:null};
+var Q={scope:'all',mode:'mix',n:10,phase:'setup',qs:[],i:0,score:0,picked:null,wrong:[],msg:'',exam:false,note:''};
+var T={phase:'home',kind:'new',next:null,teach:[],ti:0,queue:[],qi:0,cur:null,picked:null,ok1:0,total:0,wrongSet:[],removed:[],note:''};
 
 /* ---------- wafer map ---------- */
 var ORDER=WORDS,dotEls=[];
@@ -1070,8 +1110,8 @@ function renderToday(){
 function renderTodayHome(){
   ensureToday();
   var dl=daysLeft(),rem=unseen().length,sug=suggest();
-  var td=S.td,rev=td.rdone?[]:reviewIds(),teachLeft=td.list.length-td.taught,qNew=td.list.length>0&&!td.done;
-  var exN=rev.filter(function(n){return inExtra(n);}).length,exAll=extraIds().length;
+  var td=S.td,rev=reviewIds(),teachLeft=td.list.length-td.taught,qNew=td.list.length>0&&!td.done;
+  var exN=rev.filter(function(n){return inExtra(n);}).length,exAll=extraIds().length,reviewedToday=Object.keys(td.ok).length>0;
   var examNote='';
   if(dl!==null){
     examNote=dl>0?'離考試還有 <b>'+dl+'</b> 天。':(dl===0?'今天就是考試日。':'這個日期已經過了，請重新設定。');
@@ -1080,14 +1120,12 @@ function renderTodayHome(){
   }
   var pdOpts='<option value="0"'+(S.perDay===0?' selected':'')+'>自動（'+sug+' 個）</option>'+
     [3,5,8,10,15,20].map(function(n){return '<option value="'+n+'"'+(S.perDay===n?' selected':'')+'>'+n+' 個</option>';}).join('');
-  var nextIdx=rev.length>0?0:(teachLeft>0?1:(qNew?2:-1));
+  var newPending=teachLeft>0||qNew,nextIdx=rev.length>0?0:(newPending?1:-1);
   var steps=[
-    {t:'複習',s:td.rdone?'今天的複習做完了。':(rev.length?rev.length+' 個字要複習'+(exN?'（含多複習 '+exN+' 個）':'')+'，先考一遍':'今天沒有要複習的字。答錯的字和多複習清單裡的字，會出現在這裡。'),done:rev.length===0,
+    {t:'複習',s:rev.length?rev.length+' 個字要複習'+(exN?'，其中 '+exN+' 個在多複習清單':'')+'。':(reviewedToday?'今天的複習做完了。':'今天沒有要複習的字。'),done:rev.length===0,
       b:rev.length>0?'<button type="button" class="btn go'+(nextIdx===0?' primary':'')+'" data-act="treview">開始</button>':''},
-    {t:'學新字',s:td.list.length?td.list.length+' 個新字：看字、聽發音、讀聯想':'沒有新字了',done:teachLeft<=0,
-      b:teachLeft>0?'<button type="button" class="btn go'+(nextIdx===1?' primary':'')+'" data-act="tstart">'+(td.taught>0?'繼續':'開始')+'</button>':''},
-    {t:'小測驗',s:td.list.length?'把今天的新字考一遍':'今天沒有新字要考',done:!qNew,
-      b:qNew?(teachLeft<=0?'<button type="button" class="btn go'+(nextIdx===2?' primary':'')+'" data-act="tquiz">開始</button>':'<span class="wait">先學新字</span>'):''}
+    {t:'新字',s:td.list.length?(teachLeft>0&&td.taught>0?'已看 '+td.taught+' / '+td.list.length+' 個，接著看完再小測驗。':td.list.length+' 個新字：先看字卡，再小測驗。'):'今天沒有新字了。',done:!newPending,
+      b:teachLeft>0?'<button type="button" class="btn go'+(nextIdx===1?' primary':'')+'" data-act="tstart">'+(td.taught>0?'繼續':'開始')+'</button>':(qNew?'<button type="button" class="btn go'+(nextIdx===1?' primary':'')+'" data-act="tquiz">去小測驗</button>':'')}
   ];
   var todo='<ol class="todo">'+steps.map(function(x,i){
     return '<li class="'+(x.done?'done':'')+'"><span class="nm" aria-hidden="true">'+(x.done?'✓':(i+1))+'</span><div><b>'+x.t+'</b><span class="s">'+x.s+'</span></div>'+(x.b||'')+'</li>';
@@ -1095,10 +1133,10 @@ function renderTodayHome(){
   var btn='';
   if(nextIdx<0)btn='<div class="fb"><b>今天的練習完成了</b><p class="note">想多練可以再考一輪，或多學幾個新字。</p></div>'+
     '<div class="row">'+(td.list.length?'<button type="button" class="btn" data-act="tquiz">再考一輪新字</button>':'')+(rem>0?'<button type="button" class="btn primary" data-act="tmore">再多學 '+Math.min(5,rem)+' 個新字</button>':'')+'</div>';
-  view.innerHTML='<div class="stack"><div class="panel"><h2 style="margin:0 0 4px;font-size:1.3rem">今天要做的三件事</h2>'+todo+btn+
+  view.innerHTML='<div class="stack"><div class="panel"><h2 style="margin:0 0 4px;font-size:1.3rem">今天要做的兩件事</h2>'+todo+btn+
     '<p class="note" style="margin-top:8px">每一件都可以單獨做，做到一半也能先離開，答過的題目都已經記錄了。</p></div>'+
     '<div class="panel"><h2 style="margin:0 0 6px;font-size:1.1rem">多複習清單</h2>'+
-    '<p class="note">'+(exAll?exAll+' 個字，每天都會出現在複習裡，'+(S.autoN?'連續答對 '+S.autoN+' 次就自動移出。':'由你手動移出。'):'還沒有字。在學習頁或閃卡按「多複習」，或到清單頁挑選。')+'</p>'+
+    '<p class="note">'+(exAll?exAll+' 個字。每天都會出現在複習裡，'+(S.autoN?'連續答對 '+S.autoN+' 次就自動移出。':'由你手動移出。')+'答錯的字也會自動加進來。':'還沒有字。答錯的字會自動加進來；也可以在學習頁或閃卡按「＋多複習」自己加。')+'</p>'+
     '<div class="row" style="margin-top:10px"><button type="button" class="btn" data-act="xmanage">管理清單</button>'+(exAll?'<button type="button" class="btn" data-act="xdrill">現在練習</button>':'')+'</div></div>'+
     '<div class="panel"><h2 style="margin:0 0 6px;font-size:1.1rem">考試日期與步調</h2>'+
     '<div class="field"><label>考試日期<input type="date" id="examdate" value="'+S.exam+'"></label>'+
@@ -1106,7 +1144,7 @@ function renderTodayHome(){
     (examNote?'<p class="note">'+examNote+'</p>':'<p class="note">還不確定考試日也沒關係。填了之後，系統會算出每天要學幾個字。</p>')+'</div>'+
     '<div class="panel"><h2 style="margin:0 0 6px;font-size:1.1rem">為什麼要練到「全部」</h2>'+
     '<p class="note">如果 20 題全對才算過，每題又是從 288 字隨機抽，不靠猜的話，熟 90% 的字全對機率約 12%，熟 95% 約 36%，熟 99% 約 82%。所以目標是 288 個都熟，而且隔天再考還是對。</p>'+
-    '<p class="note" style="margin-top:8px">進度只看答題：答對一次是淡黃，不同天各答對一次是亮黃（熟練），答錯就熄掉，隔天再考。</p></div></div>';
+    '<p class="note" style="margin-top:8px">進度只看答題：答對一次是淡黃，不同天各答對一次是亮黃（熟練）。答錯的字會熄掉，並自動加進多複習。</p></div></div>';
 }
 function startTeach(){
   var td=S.td;
@@ -1124,28 +1162,28 @@ function renderTeach(){
 function startTodayQuiz(kind){
   var ids=shuffle(kind==='review'?reviewIds():S.td.list.slice());
   T.kind=kind;T.queue=ids.map(function(n){return {no:n,tries:0};});
-  T.total=ids.length;T.qi=0;T.ok1=0;T.wrongSet=[];T.picked=null;T.next=null;T.removed=[];T.removedNo=null;
+  T.total=ids.length;T.qi=0;T.ok1=0;T.wrongSet=[];T.picked=null;T.next=null;T.removed=[];T.note='';
   if(!T.total){T.phase='home';renderToday();return;}
   T.phase='quiz';newTodayQ();renderToday();
 }
 function newTodayQ(){
   var it=T.queue[T.qi],b=S.box[it.no];
-  T.cur=makeQ(BYNO[it.no],(it.tries>0||b===undefined||b===0)?2:4,randDir());T.picked=null;T.removedNo=null;
+  T.cur=makeQ(BYNO[it.no],(it.tries>0||b===undefined||b===0)?2:4,randDir());T.picked=null;T.note='';
 }
 function renderTodayQuiz(){
   var q=T.cur,w=q.w,answered=T.picked!==null,ok=T.picked===w.no;
   view.innerHTML='<p class="fcount">'+(T.kind==='review'?'複習':'新字小測驗')+'　第 '+(T.qi+1)+' / '+T.queue.length+' 題</p>'+
     '<div class="panel"><div class="qprompt" style="display:flex;flex-direction:column;align-items:center;gap:6px">'+promptHtml(w,q.dir)+'</div><div class="opts">'+optsHtml(q,T.picked)+'</div>'+
-    (answered?fbHtml(w,ok,extraNote(w.no,T.removedNo===w.no))+'<div class="row"><button type="button" class="btn primary" data-act="tqnext">'+(T.qi+1>=T.queue.length?'看結果':'下一題')+'</button></div>':'')+'</div>'+
+    (answered?fbHtml(w,ok,T.note)+'<div class="row"><button type="button" class="btn primary" data-act="tqnext">'+(T.qi+1>=T.queue.length?'看結果':'下一題')+'</button></div>':'')+'</div>'+
     '<p style="text-align:center;margin-top:12px"><button type="button" class="mini" data-act="thome">先離開，晚點再做</button></p><p class="hint" style="text-align:center;margin-top:4px">答過的題目都已經記錄。</p>';
 }
 function renderTodayDone(){
   var wl=T.wrongSet.map(function(n){var w=BYNO[n];return '<div><b style="font-family:var(--f-display);font-size:1.15rem">'+w.en+'</b> '+w.zh+phHtml(w.no)+'<p class="hook">'+w.ic+' '+w.hook+'</p></div>';}).join('');
   var left=S.td.list.length-S.td.taught;
   var nx=T.next==='teach'?'<button type="button" class="btn primary" data-act="tcont">繼續：學 '+left+' 個新字</button>':
-    (T.next==='quiz'?'<button type="button" class="btn primary" data-act="tcont">繼續：小測驗</button>':'<button type="button" class="btn primary" data-act="thome">回今天的首頁</button>');
+    (T.next==='quiz'?'<button type="button" class="btn primary" data-act="tcont">繼續：新字小測驗</button>':'<button type="button" class="btn primary" data-act="thome">回今天的首頁</button>');
   view.innerHTML='<div class="panel"><p class="hint" style="text-align:center">'+(T.kind==='review'?'複習結果':'小測驗結果')+'</p><p class="score">'+T.ok1+' / '+T.total+'</p>'+
-    '<p style="text-align:center">'+(T.wrongSet.length?'第一次就答對 '+T.ok1+' 個，有 '+T.wrongSet.length+' 個要再加強，明天會再出現。':'全部一次答對。')+'</p>'+
+    '<p style="text-align:center">'+(T.wrongSet.length?'第一次就答對 '+T.ok1+' 個，有 '+T.wrongSet.length+' 個要再加強，已加進多複習，會再考你。':'全部一次答對。')+'</p>'+
     (wl?'<div class="wl">'+wl+'</div>':'')+
     (T.removed.length?'<p class="note" style="text-align:center">已從多複習移出：'+T.removed.map(function(n){return BYNO[n].en;}).join('、')+'。</p>':'')+
     '<div class="row">'+(T.next?'<button type="button" class="btn" data-act="thome">先到這裡</button>':'')+nx+'</div></div>';
@@ -1176,7 +1214,7 @@ function xRowsHtml(f){
   if(!list.length)return '<p class="empty">'+(f==='list'&&!XQ?'清單是空的。切到「全部單字」，按單字右邊的「＋多複習」加入。':'沒有符合的單字。')+'</p>';
   return list.map(function(w){
     var x=inExtra(w.no);
-    var sub=stageText(w.no)+(x&&S.autoN>0?' · 連續答對 '+S.extra[w.no]+' / '+S.autoN:'')+(x&&S.box[w.no]===undefined?' · 會優先當新字教':'');
+    var sub=stageText(w.no)+(x&&S.autoN>0?' · 連續答對 '+S.extra[w.no]+' / '+S.autoN:'')+(x&&S.box[w.no]===undefined?' · 今天的複習會直接考它':'');
     return '<div class="xrow'+(x?' on':'')+'"><span class="xi" aria-hidden="true">'+w.ic+'</span><div class="xm"><span class="xw">'+w.en+'</span> <span class="xz">'+w.zh+'</span><span class="xs">'+sub+'</span></div>'+
       '<button type="button" class="mini" data-xt="'+w.no+'" aria-pressed="'+x+'">'+xtLabel(w.no)+'</button></div>';
   }).join('');
@@ -1190,7 +1228,7 @@ function renderExtraPage(){
   var n=extraIds().length,f=st.xf||(n?'list':'all');
   var gopts='<option value="all">全部組別</option>'+GROUPS.map(function(g){return '<option value="'+g.id+'"'+(st.xg===g.id?' selected':'')+'>'+g.name+'</option>';}).join('');
   var autoOpts=[[2,'連續答對 2 次'],[3,'連續答對 3 次'],[0,'不自動移出']].map(function(a){return '<option value="'+a[0]+'"'+(S.autoN===a[0]?' selected':'')+'>'+a[1]+'</option>';}).join('');
-  return '<div class="ghead"><h2>多複習清單</h2><span class="gen">EXTRA PRACTICE</span><span class="gsub">想多練的字放在這裡，每天都會出現在「今天」的複習，直到你移出。</span></div>'+
+  return '<div class="ghead"><h2>多複習清單</h2><span class="gen">EXTRA PRACTICE</span><span class="gsub">想多練的字放在這裡，每天都會出現在「今天」的複習，直到你移出。</span></div>'+'<p class="note" id="xnote" role="status" style="margin:0 0 8px"></p>'+
     '<div class="xbar">'+
       '<div class="seg" role="group" aria-label="顯示範圍"><button type="button" data-xf="list" aria-pressed="'+(f==='list')+'">清單內 <span id="xn">'+n+'</span></button><button type="button" data-xf="all" aria-pressed="'+(f==='all')+'">全部單字</button></div>'+
       '<input type="search" id="xsearch" class="search" placeholder="搜尋英文或中文" value="'+esc(XQ)+'" autocomplete="off">'+
@@ -1213,7 +1251,7 @@ function toggleExtraUI(no){
     f.note=on?'「'+BYNO[no].en+'」已加入多複習，每天會出現在「今天」的複習。':'「'+BYNO[no].en+'」已移出多複習。';
     renderFlash();
     if(was){var c2=$('#flipcard');if(c2)c2.classList.add('on');}
-  }else if(st.tab==='learn'){patchExtra(no);}
+  }else if(st.tab==='learn'){patchExtra(no);var xn2=$('#xnote');if(xn2)xn2.textContent=on?'「'+BYNO[no].en+'」已加入，今天的複習會考它。':'「'+BYNO[no].en+'」已移出多複習。';}
   updateChrome();
 }
 function jumpToFlash(no){
@@ -1342,7 +1380,7 @@ function renderQuiz(){
       (hist?'<p class="hint" style="margin-top:10px">最近成績</p><div class="hist">'+hist+'</div>':'')+
       '<button type="button" class="btn primary" style="width:100%;margin-top:10px" data-act="qexam">開始模擬考</button></div>'+
       '<div class="panel"><h2 style="margin:0 0 4px;font-size:1.3rem">自選練習</h2>'+
-      '<p class="note">答對、答錯都會記錄。同一個字隔天再答對，才算熟練。</p>'+
+      '<p class="note">答對、答錯都會記錄。同一個字隔天再答對，才算熟練；答錯的字會自動加進多複習。</p>'+
       '<div class="ctl" style="margin-top:12px"><label class="sel">範圍<select id="qscope">'+scopeOptions(q.scope)+'</select></label>'+
       '<label class="sel">題數<select id="qn"><option value="10"'+(q.n===10?' selected':'')+'>10 題</option><option value="20"'+(q.n===20?' selected':'')+'>20 題</option><option value="30"'+(q.n===30?' selected':'')+'>30 題</option></select></label></div>'+
       '<div class="modes">'+modes+'</div>'+
@@ -1354,15 +1392,15 @@ function renderQuiz(){
     var n=q.qs.length,all=q.score===n;
     var wl=q.wrong.map(function(w){return '<div><b style="font-family:var(--f-display);font-size:1.15rem">'+w.en+'</b> '+w.zh+phHtml(w.no)+'<p class="hook">'+w.ic+' '+w.hook+'</p></div>';}).join('');
     view.innerHTML='<div class="panel"><p class="hint" style="text-align:center">'+(q.exam?'模擬考成績':'本次成績')+'</p><p class="score">'+q.score+' / '+n+'</p>'+
-      '<p style="text-align:center">'+(q.exam?(all?'全對，這次通過。再考幾次，確認每次都穩。':'沒有全對，這次不算通過。錯的字列在下面，可以到「今天」或「測驗」的自選練習再練。'):(all?'全對！':q.wrong.length+' 個字要再加強。'))+'</p>'+
+      '<p style="text-align:center">'+(q.exam?(all?'全對，這次通過。再考幾次，確認每次都穩。':'沒有全對，這次不算通過。錯的字列在下面，可以到「今天」或「測驗」的自選練習再練。'):(all?'全對！':q.wrong.length+' 個字要再加強，已加進多複習。'))+'</p>'+
       (q.wrong.length?'<div class="wl">'+wl+'</div>':'')+
-      '<div class="row"><button type="button" class="btn" data-act="qsetup">回測驗首頁</button><button type="button" class="btn primary" data-act="'+(q.exam?'qexam':'qstart')+'">再考一次</button></div></div>';
+      '<div class="row"><button type="button" class="btn" data-act="qsetup">'+(q.from==='today'?'回今天':(q.from?'回多複習清單':'回測驗首頁'))+'</button><button type="button" class="btn primary" data-act="'+(q.exam?'qexam':'qstart')+'">再考一次</button></div></div>';
     return;
   }
   var cur=q.qs[q.i],w=cur.w,answered=q.picked!==null,ok=q.picked===w.no;
   view.innerHTML='<p class="fcount">'+(q.exam?'模擬考　':'')+'第 '+(q.i+1)+' / '+q.qs.length+' 題</p>'+
     '<div class="panel"><div class="qprompt" style="display:flex;flex-direction:column;align-items:center;gap:6px">'+promptHtml(w,cur.dir)+'</div><div class="opts">'+optsHtml(cur,q.picked)+'</div>'+
-    (answered?fbHtml(w,ok,q.exam?'':extraNote(w.no,q.removedNo===w.no))+'<div class="row"><button type="button" class="btn primary" data-act="qnext">'+(q.i+1>=q.qs.length?'看成績':'下一題')+'</button></div>':'')+'</div>'+
+    (answered?fbHtml(w,ok,q.exam?'':q.note)+'<div class="row"><button type="button" class="btn primary" data-act="qnext">'+(q.i+1>=q.qs.length?'看成績':'下一題')+'</button></div>':'')+'</div>'+
     '<p style="text-align:center;margin-top:12px"><button type="button" class="mini" data-act="qsetup">'+(q.exam?'放棄這次模擬考':'結束練習')+'</button></p>'+(q.exam?'':'<p class="hint" style="text-align:center;margin-top:4px">答過的題目都已經記錄。</p>');
 }
 
@@ -1394,7 +1432,7 @@ document.addEventListener('click',function(e){
   if(d.xf){st.xf=d.xf;renderLearn();return;}
   if(d.goto){goToWord(+d.goto);return;}
   if(el.classList&&el.classList.contains('d')){goToWord(ORDER[+d.i].no);return;}
-  if(d.tab){st.tab=d.tab;st.armReset=false;st.armClear=false;render();window.scrollTo(0,0);return;}
+  if(d.tab){Q.from=null;st.tab=d.tab;st.armReset=false;st.armClear=false;render();window.scrollTo(0,0);return;}
   if(d.g){st.gid=d.g;st.armClear=false;render();return;}
   if(el.classList.contains('reveal')){el.closest('.card').classList.toggle('shown');return;}
   if(el.classList.contains('tile')){el.classList.toggle('shown');return;}
@@ -1404,10 +1442,11 @@ document.addEventListener('click',function(e){
     if(st.tab==='today'&&T.phase==='quiz'){
       if(T.picked!==null)return;
       var it=T.queue[T.qi],ok=(pk===it.no);
-      T.picked=pk;T.removedNo=null;
-      if(ok){if(it.tries===0){T.ok1++;grade(it.no,true);if(extraAnswer(it.no,true)){T.removedNo=it.no;T.removed.push(it.no);}}}
+      T.picked=pk;
+      var r=record(it.no,ok,it.tries===0);T.note=r.note;
+      if(r.removed&&T.removed.indexOf(it.no)<0)T.removed.push(it.no);
+      if(ok){if(it.tries===0)T.ok1++;}
       else{
-        grade(it.no,false);extraAnswer(it.no,false);
         if(T.wrongSet.indexOf(it.no)<0)T.wrongSet.push(it.no);
         if(it.tries<2)T.queue.push({no:it.no,tries:it.tries+1});
       }
@@ -1415,9 +1454,9 @@ document.addEventListener('click',function(e){
     }
     if(Q.picked!==null)return;
     var cur=Q.qs[Q.i];
-    Q.picked=pk;Q.removedNo=null;
-    if(pk===cur.w.no){Q.score++;if(!Q.exam){grade(cur.w.no,true);if(extraAnswer(cur.w.no,true))Q.removedNo=cur.w.no;}}
-    else{Q.wrong.push(cur.w);if(!Q.exam){grade(cur.w.no,false);extraAnswer(cur.w.no,false);}}
+    Q.picked=pk;Q.note='';
+    if(pk===cur.w.no){Q.score++;if(!Q.exam)Q.note=record(cur.w.no,true,true).note;}
+    else{Q.wrong.push(cur.w);if(!Q.exam)Q.note=record(cur.w.no,false,true).note;}
     renderQuiz();return;
   }
   switch(d.act){
@@ -1437,7 +1476,7 @@ document.addEventListener('click',function(e){
       T.qi++;
       if(T.qi>=T.queue.length){
         if(T.kind==='new'){S.td.done=true;T.next=null;}
-        else{S.td.rdone=true;T.next=(S.td.list.length-S.td.taught>0)?'teach':((S.td.list.length&&!S.td.done)?'quiz':null);}
+        else{T.next=(S.td.list.length-S.td.taught>0)?'teach':((S.td.list.length&&!S.td.done)?'quiz':null);}
         save();T.phase='done';renderToday();
       }
       else{newTodayQ();renderTodayQuiz();}
@@ -1448,7 +1487,7 @@ document.addEventListener('click',function(e){
       T.phase='home';renderToday();window.scrollTo(0,0);break;
     case 'reset':
       if(!st.armReset){st.armReset=true;renderLearn();}
-      else{S.box={};S.d={};S.hist=[];S.extra={};S.td={day:0,list:[],taught:0,done:false,rdone:false};save();sync();st.armReset=false;T.phase='home';render();}
+      else{S.box={};S.d={};S.hist=[];S.extra={};S.td={day:0,list:[],taught:0,done:false,ok:{}};save();sync();st.armReset=false;T.phase='home';render();}
       break;
     case 'fflip':flipCard();break;
     case 'fknow':flashNext(true);break;
@@ -1460,17 +1499,21 @@ document.addEventListener('click',function(e){
     case 'funknown':st.flash.from=null;st.flash.scope='unknown';buildDeck();renderFlash();break;
     case 'xmanage':st.tab='learn';st.gid='extra';render();window.scrollTo(0,0);break;
     case 'xdrill':
-      Q.scope='extra';Q.mode='mix';st.tab='quiz';startQuiz(false);updateChrome();window.scrollTo(0,0);
+      Q.from=(st.tab==='today')?'today':'extra';Q.scope='extra';Q.mode='mix';st.tab='quiz';startQuiz(false);updateChrome();window.scrollTo(0,0);
       break;
     case 'xclear':
       if(!st.armClear){st.armClear=true;renderLearn();}
       else{S.extra={};save();st.armClear=false;renderLearn();}
       break;
-    case 'qsetup':Q.phase='setup';Q.msg='';renderQuiz();break;
+    case 'qsetup':
+      Q.phase='setup';Q.msg='';
+      if(Q.from){var fr2=Q.from;Q.from=null;st.tab=fr2==='today'?'today':'learn';if(fr2!=='today')st.gid='extra';render();window.scrollTo(0,0);}
+      else renderQuiz();
+      break;
     case 'qstart':startQuiz(false);break;
     case 'qexam':startQuiz(true);break;
     case 'qnext':
-      Q.i++;Q.picked=null;Q.removedNo=null;
+      Q.i++;Q.picked=null;Q.note='';
       if(Q.i>=Q.qs.length){
         Q.phase='result';
         if(Q.exam){S.hist.push({d:today(),s:Q.score,n:Q.qs.length});S.hist=S.hist.slice(-20);save();}
@@ -1495,9 +1538,9 @@ document.addEventListener('change',function(e){
   else if(t.name==='qmode'){Q.mode=t.value;}
   else if(t.id==='examdate'){
     S.exam=/^\d{4}-\d{2}-\d{2}$/.test(t.value)?t.value:'';
-    S.td.day=0;save();renderToday();
+    save();regenToday();renderToday();
   }
-  else if(t.id==='perday'){S.perDay=+t.value|0;S.td.day=0;save();renderToday();}
+  else if(t.id==='perday'){S.perDay=+t.value|0;save();regenToday();renderToday();}
   else if(t.id==='xgroup'){st.xg=t.value;renderXList();}
   else if(t.id==='xauto'){S.autoN=+t.value;save();renderXList();}
 });
